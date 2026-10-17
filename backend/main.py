@@ -1,4 +1,5 @@
 
+import os
 import re
 from contextlib import asynccontextmanager
 
@@ -9,9 +10,15 @@ from pydantic import BaseModel, Field
 from mcp import ClientSession
 from mcp.client.streamable_http import streamable_http_client
 
-from backend.database import init_database, execute_read_only
-from backend.sql_validator import validate_sql
-from backend.model_service import load_model, generate_sql
+from database import init_database, execute_read_only
+from sql_validator import validate_sql
+from model_service import load_model, generate_sql
+
+
+MCP_SERVER_URL = os.getenv(
+    "MCP_SERVER_URL",
+    "http://127.0.0.1:8001/mcp",
+)
 
 
 @asynccontextmanager
@@ -33,6 +40,7 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:5173",
         "http://127.0.0.1:5173",
+        "https://sinchana-mj.github.io",
     ],
     allow_credentials=False,
     allow_methods=["GET", "POST"],
@@ -105,7 +113,7 @@ def health():
         "authorization": (
             "Local SQL validation; ArmorIQ not connected"
         ),
-        "mcp_server": "http://127.0.0.1:8001/mcp",
+        "mcp_server": MCP_SERVER_URL,
     }
 
 
@@ -114,9 +122,9 @@ async def get_mcp_students():
     """Retrieve student records through the MCP server."""
 
     try:
-        async with streamablehttp_client(
-            "http://127.0.0.1:8001/mcp"
-        ) as (read_stream, write_stream, _):
+        async with streamable_http_client(
+            MCP_SERVER_URL
+        ) as (read_stream, write_stream):
             async with ClientSession(
                 read_stream, write_stream
             ) as session:
@@ -154,7 +162,8 @@ async def get_mcp_students():
             status_code=502,
             detail=(
                 "Could not retrieve student records from MCP. "
-                "Check that the MCP server is running."
+                "Verify that the MCP server is running and "
+                "MCP_SERVER_URL points to its reachable URL."
             ),
         )
 
@@ -169,7 +178,6 @@ def generate(request: QueryRequest):
             detail="Question cannot be empty.",
         )
 
-    # Reject modification or destructive requests.
     if is_unsafe_request(question):
         raise HTTPException(
             status_code=400,
@@ -179,7 +187,6 @@ def generate(request: QueryRequest):
             ),
         )
 
-    # Reject explicitly requested unapproved tables.
     if requests_unapproved_table(question):
         raise HTTPException(
             status_code=400,
@@ -189,7 +196,6 @@ def generate(request: QueryRequest):
             ),
         )
 
-    # Generate SQL with the fine-tuned Qwen model.
     try:
         sql = generate_sql(question)
 
@@ -203,7 +209,6 @@ def generate(request: QueryRequest):
             detail="SQL generation failed.",
         )
 
-    # Validate SQL before execution.
     valid, reason = validate_sql(sql)
 
     if not valid:
@@ -212,7 +217,6 @@ def generate(request: QueryRequest):
             detail=f"Generated SQL rejected: {reason}",
         )
 
-    # Execute only after validation.
     try:
         results = execute_read_only(sql)
 
@@ -232,9 +236,7 @@ def generate(request: QueryRequest):
         "question": question,
         "sql": sql,
         "authorized": True,
-        "authorization_mode": (
-            "local demo policy; not ArmorIQ"
-        ),
+        "authorization_mode": "local demo policy; not ArmorIQ",
         "columns": results["columns"],
         "results": results["rows"],
         "message": (
