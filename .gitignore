@@ -1,0 +1,38 @@
+.env
+armoriq.yaml
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Node and frontend builds
+node_modules/
+frontend/node_modules/
+frontend/dist/
+dist/
+build/
+
+# Model weights and archives
+*.pt
+*.pth
+*.bin
+*.onnx
+*.zip
+
+# Local databases and logs
+*.db
+*.sqlite
+*.sqlite3
+*.log
+
+# Editor and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Temporary test files
+permission_test.txt
